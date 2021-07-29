@@ -2,7 +2,10 @@
 #include "ESP8266WiFi.h"
 #include "ESP8266WebServer.h"
 #include "ArduinoOTA.h"
-#include "network.h"
+#include "time.h"
+
+// Wifi credentials
+#include "WiFiSettings.h"
 
 #define PIN_LED 13
 #define PIN_RELAI 12
@@ -10,7 +13,7 @@
 
 #define IP_MODULE 254
 
-// Page HTML
+// HTML page
 const char index_html[] PROGMEM = R"=====(
 <!doctype html>
 <html lang="fr">
@@ -46,16 +49,16 @@ const char index_html[] PROGMEM = R"=====(
 </html>
 )=====";
 
-// Gestion des événements du WiFi
-// Lorsque la connexion vient d'aboutir
+// WiFi connected event
 void onConnected(const WiFiEventStationModeConnected& event);
-// Lorsque l'adresse IP est attribuée
+
+// IP address event
 void onGotIP(const WiFiEventStationModeGotIP& event);
 
-// Objet WebServer
+// WebServer object
 ESP8266WebServer serverWeb(80);
 
-// Fonctions du serveur Web
+// WebServer functions
 void handleRoot() {
   String temp(reinterpret_cast<const __FlashStringHelper *> (index_html));
 
@@ -90,36 +93,33 @@ void APOff() {
 }
 
 void setup() {
-  // Liste des IP pour une configuration en IP Fixe
+  // Network configuration
   IPAddress ip(192, 168, 1, IP_MODULE);
   IPAddress gateway(192, 168, 1, 1);
   IPAddress subnet(255, 255, 255, 0);
   IPAddress dns(192, 168, 1, 1);
 
-  // Mise en place d'une liaison série
   Serial.begin(9600L);
   delay(100);
 
-  // Configuration des entrées/sorties
   pinMode(PIN_LED, OUTPUT);
   pinMode(PIN_RELAI, OUTPUT);
   pinMode(PIN_BOUTON, INPUT_PULLUP);
 
-  // Module OFF par défaut
+  // Relay is OFF by default
   digitalWrite(PIN_RELAI, LOW);
 
-  // Mode de connexion
   WiFi.softAP("Module Sonoff Basic R2");
   WiFi.mode(WIFI_AP_STA);
  
-  // Démarrage de la connexion
+  // Connect to WiFi
   WiFi.config(ip, gateway, subnet, dns);
   WiFi.begin(SSID, PASSWORD);
 
   static WiFiEventHandler onConnectedHandler = WiFi.onStationModeConnected(onConnected);
   static WiFiEventHandler onGotIPHandler = WiFi.onStationModeGotIP(onGotIP);
 
-  // Mise en place du serveur WebServer
+  // WebServer setup
   serverWeb.on("/switchOn", switchOn);
   serverWeb.on("/switchOff", switchOff);
   serverWeb.on("/APOff", APOff);
@@ -127,14 +127,12 @@ void setup() {
   serverWeb.on("/index.html", handleRoot);
   serverWeb.begin();
 
-  // Nom pour l'OTA
   ArduinoOTA.setHostname("Module Sonoff Basic R2");
 }
 
 void loop() {
-  // Si l'objet est connecté au réseau, on effectue les tâches qui doivent l'être dans ce cas
   if (WiFi.isConnected()) {
-    digitalWrite(PIN_LED, LOW); // LED active à l'état bas
+    digitalWrite(PIN_LED, LOW); // LED is ON (pulled LOW)
     ArduinoOTA.begin();
   }
   else {

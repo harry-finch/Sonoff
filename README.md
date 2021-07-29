@@ -3,7 +3,7 @@
 I found the original program through this great video by Eric Peronnin: 
 https://www.youtube.com/watch?v=y9pcBowAaXw
 
-Here are the improvements I have made:
+Here are the improvements I have made to the code:
 - Cleaner and simpler HTML
 - Only one button on the page
 

@@ -2,16 +2,15 @@
 #include "ESP8266WiFi.h"
 #include "ESP8266WebServer.h"
 #include "ArduinoOTA.h"
+#include "network.h"
 
-// Définition des entrées/sorties
 #define PIN_LED 13
 #define PIN_RELAI 12
 #define PIN_BOUTON 0
 
-// Adresse IP partielle du module
 #define IP_MODULE 254
 
-// Page html
+// Page HTML
 const char index_html[] PROGMEM = R"=====(
 <!doctype html>
 <html lang="fr">
@@ -46,9 +45,6 @@ const char index_html[] PROGMEM = R"=====(
     </body>
 </html>
 )=====";
-
-const char * SSID = "Livebox-7990";
-const char * PASSWORD = "fHH5t5nYGhLvQJPK7v";
 
 // Gestion des événements du WiFi
 // Lorsque la connexion vient d'aboutir

@@ -1,6 +1,7 @@
-### Sonoff hack
+# Sonoff hack
 
-I found the original program through this great video by Eric Peronnin: https://www.youtube.com/watch?v=y9pcBowAaXw
+I found the original program through this great video by Eric Peronnin: 
+https://www.youtube.com/watch?v=y9pcBowAaXw
 
 Here are the improvements I have made:
 - Cleaner and simpler HTML

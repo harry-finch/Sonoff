@@ -5,7 +5,12 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
+// Create a credentials.h file with the following definitions
 #include "credentials.h"
+// #define WIFI_SSID "SSID"
+// #define WIFI_PASSWORD "WIFI PASSWORD"
+// #define BOT_TOKEN "BOTFATHER TOKEN"
+// #define CHAT_ID "YOUR TELEGRAM ID"
 
 const unsigned long BOT_MTBS = 1000;                            // mean time between scan messages
 unsigned long bot_lasttime;                                     // last time messages' scan has been done

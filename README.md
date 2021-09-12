@@ -8,12 +8,10 @@ The tutorial explains how to upload a new program to the Sonoff. The program cre
 
 You'll find the [original program here](http://geii.eu/index.php?option=com_content&view=article&id=244&Itemid=955).
 
+## Revamp
+
+I used the original program for a while but wanted to be able to control the module from anywhere, so I decided to switch to using a Telegram Bot. For this I used [Brian Lough's library](https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot) and one of its example files.
+
 ## Improvements
 
-I liked the project and decided to make some improvements to the program. Here's what I have made so far:
-- Cleaner and simpler HTML
-- Only one button on the page
-
-Improvements to come:
-- Timer function with NTP support
-- Better looking webpage
+- Added a programmable timer command

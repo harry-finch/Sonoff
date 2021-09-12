@@ -1,156 +1,151 @@
-#include "Arduino.h"
-#include "ESP8266WiFi.h"
-#include "ESP8266WebServer.h"
-#include "ArduinoOTA.h"
-#include "time.h"
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
 
-// Wifi credentials
-#include "WiFiSettings.h"
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
-#define PIN_LED 13
-#define PIN_RELAI 12
-#define PIN_BOUTON 0
+#include "credentials.h"
 
-#define IP_MODULE 254
+const unsigned long BOT_MTBS = 1000;                            // mean time between scan messages
+unsigned long bot_lasttime;                                     // last time messages' scan has been done
 
-// HTML page
-const char index_html[] PROGMEM = R"=====(
-<!doctype html>
-<html lang="fr">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Relais SONOFF</title>
-        <style>
-          body {
-            padding: 10px;
-            color: #DDDDDD;
-            background-color: #333333;
-          }
-          h1 { font: 2em Arial; }
+X509List cert(TELEGRAM_CERTIFICATE_ROOT);
+WiFiClientSecure secured_client;
+UniversalTelegramBot bot(BOT_TOKEN, secured_client);
 
-          .bouton {
-              font: 3em Arial; color: #DDDDDD; text-align: center; text-decoration: none;
-              background-color: blueviolet;
-              border: 1px; border-radius: 3px;
-              padding: 5px 0px; display: inline-block; margin: 4px 2px;
-              cursor: pointer;
-              width: 100%;
-          }
-        </style>
-    </head>
-    <body>
-        <h1 id="etatSonoffBasic">Etat du module : %ETAT_SONOFF%</h1>
+const char* ntpServer = "europe.pool.ntp.org";
+const long  gmtOffset_sec = 7200;
+const int   daylightOffset_sec = 3600;
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, ntpServer, gmtOffset_sec);
 
-        <form action="/switch%BTN_ACTION%">
-          <input class="bouton" type="submit" value="%BTN_LABEL%">
-        </form>
-    </body>
-</html>
-)=====";
+const int ledPin = 13;
+const int relayPin = 12;
+int relayStatus = 0;
 
-// WiFi connected event
-void onConnected(const WiFiEventStationModeConnected& event);
+int startTimer = 8;
+int endTimer = 22;
+bool timerMode = false;
 
-// IP address event
-void onGotIP(const WiFiEventStationModeGotIP& event);
+void handleNewMessages(int numNewMessages) {
+  Serial.print("handleNewMessages ");
+  Serial.println(numNewMessages);
 
-// WebServer object
-ESP8266WebServer serverWeb(80);
+  for (int i = 0; i < numNewMessages; i++) {
+    String chat_id = bot.messages[i].chat_id;
+    String text = bot.messages[i].text;
 
-// WebServer functions
-void handleRoot() {
-  String temp(reinterpret_cast<const __FlashStringHelper *> (index_html));
+    if (chat_id != CHAT_ID){
+      bot.sendMessage(chat_id, "Unauthorized user", "");
+      continue;
+    }
 
-  if (digitalRead(PIN_RELAI) == HIGH) {
-    temp.replace("%ETAT_SONOFF%", "ON");
-    temp.replace("%BTN_LABEL%", "Eteindre");
-    temp.replace("%BTN_ACTION%", "Off");
-  } else {
-    temp.replace("%ETAT_SONOFF%", "OFF"); 
-    temp.replace("%BTN_LABEL%", "Allumer");
-    temp.replace("%BTN_ACTION%", "On");
+    String from_name = bot.messages[i].from_name;
+    if (from_name == "")
+      from_name = "Guest";
+
+    if (text == "/on") {
+      timerMode = false;
+      digitalWrite(relayPin, HIGH);
+      relayStatus = 1;
+      bot.sendMessage(chat_id, "Light is ON", "");
+    }
+
+    if (text == "/off") {
+      timerMode = false;
+      relayStatus = 0;
+      digitalWrite(relayPin, LOW); 
+      bot.sendMessage(chat_id, "Light is OFF", "");
+    }
+
+    if (text == "/status") {
+      if (relayStatus) bot.sendMessage(chat_id, "Light is ON", "");
+      else bot.sendMessage(chat_id, "Light is OFF", "");
+
+      if (timerMode) {
+        bot.sendMessage(chat_id, "Timer is ON", "");
+        char numstr[3];
+        String timer = itoa(startTimer, numstr, 10);
+        bot.sendMessage(chat_id, "Start time is: " + timer, "");
+        timer = itoa(endTimer, numstr, 10);
+        bot.sendMessage(chat_id, "End time is: " + timer, "");
+      }
+      else bot.sendMessage(chat_id, "Timer is OFF", "");
+    }
+
+    if(text.startsWith("/timer")) {
+      int index1 = text.indexOf(' ');
+      int index2 = text.indexOf(' ', index1+1);
+
+      startTimer = text.substring(index1, index2).toInt();
+      endTimer = text.substring(index2+1).toInt();
+      timerMode = true;
+
+      String message = "Timer is now set.\n\nLights will be on from " + text.substring(index1, index2) + " to " + text.substring(index2+1) + "\n";
+      bot.sendMessage(chat_id, message, "");
+    }
+
+    if (text == "/start") {
+      String welcome = "Welcome, " + from_name + ".\n";
+      welcome += "/on : to switch the light ON\n";
+      welcome += "/off : to switch the light OFF\n";
+      welcome += "/status : returns current light status\n";
+      welcome += "/timer [start time] [end time] : sets timer \n";
+      bot.sendMessage(chat_id, welcome, "Markdown");
+    }
   }
-
-  serverWeb.send(200, "text/html", temp);
-}
-
-void switchOn() {
-  digitalWrite(PIN_RELAI, HIGH);
-  serverWeb.sendHeader("Location","/");
-  serverWeb.send(303); 
-}
-
-void switchOff() {
-  digitalWrite(PIN_RELAI, LOW);
-  serverWeb.sendHeader("Location","/");
-  serverWeb.send(303); 
-}
-
-void APOff() {
-  WiFi.enableAP(false);
-  serverWeb.send(200, "text/plain", "Access Point Off.");
 }
 
 void setup() {
-  // Network configuration
-  IPAddress ip(192, 168, 1, IP_MODULE);
-  IPAddress gateway(192, 168, 1, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  IPAddress dns(192, 168, 1, 1);
+  Serial.begin(115200);
 
-  Serial.begin(9600L);
-  delay(100);
+  pinMode(relayPin, OUTPUT);
+  pinMode(ledPin, OUTPUT);
+  delay(10);
+  digitalWrite(relayPin, LOW);
+  digitalWrite(ledPin, HIGH);
 
-  pinMode(PIN_LED, OUTPUT);
-  pinMode(PIN_RELAI, OUTPUT);
-  pinMode(PIN_BOUTON, INPUT_PULLUP);
+  // attempt to connect to Wifi network:
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);       // get UTC time via NTP
+  secured_client.setTrustAnchors(&cert);                          // Add root certificate for api.telegram.org
+  Serial.print("Connecting to Wifi SSID ");
+  Serial.print(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.print("\nWiFi connected. IP address: ");
+  Serial.println(WiFi.localIP());
+  digitalWrite(ledPin, LOW);
 
-  // Relay is OFF by default
-  digitalWrite(PIN_RELAI, LOW);
-
-  WiFi.softAP("Module Sonoff Basic R2");
-  WiFi.mode(WIFI_AP_STA);
- 
-  // Connect to WiFi
-  WiFi.config(ip, gateway, subnet, dns);
-  WiFi.begin(SSID, PASSWORD);
-
-  static WiFiEventHandler onConnectedHandler = WiFi.onStationModeConnected(onConnected);
-  static WiFiEventHandler onGotIPHandler = WiFi.onStationModeGotIP(onGotIP);
-
-  // WebServer setup
-  serverWeb.on("/switchOn", switchOn);
-  serverWeb.on("/switchOff", switchOff);
-  serverWeb.on("/APOff", APOff);
-  serverWeb.on("/", handleRoot);
-  serverWeb.on("/index.html", handleRoot);
-  serverWeb.begin();
-
-  ArduinoOTA.setHostname("Module Sonoff Basic R2");
+  bot.sendMessage(CHAT_ID, "Sonoff connected", "");
 }
 
 void loop() {
-  if (WiFi.isConnected()) {
-    digitalWrite(PIN_LED, LOW); // LED is ON (pulled LOW)
-    ArduinoOTA.begin();
-  }
-  else {
-    digitalWrite(PIN_LED, HIGH);
-  }
-  ArduinoOTA.handle();
-  serverWeb.handleClient();
-}
+  if (millis() - bot_lasttime > BOT_MTBS) {
+    int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
 
-void onConnected(const WiFiEventStationModeConnected& event) {
-  Serial.println("WiFi connecté");
-  Serial.println("Adresse IP : " + WiFi.localIP().toString());
-}
+    while (numNewMessages) {
+      Serial.println("got response");
+      handleNewMessages(numNewMessages);
+      numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+    }
 
-void onGotIP(const WiFiEventStationModeGotIP& event) {
-  Serial.println("Adresse IP : " + WiFi.localIP().toString());
-  Serial.println("Passerelle IP : " + WiFi.gatewayIP().toString());
-  Serial.println("DNS IP : " + WiFi.dnsIP().toString());
-  Serial.print("Puissance de réception : ");
-  Serial.println(WiFi.RSSI());
+    timeClient.update();
+    int currentTime = timeClient.getHours();
+    
+    if(timerMode && !relayStatus && (currentTime >= startTimer) && (currentTime < endTimer)) {
+      digitalWrite(relayPin, HIGH); 
+      relayStatus = 1;
+      bot.sendMessage(CHAT_ID, "Light has now been turned ON by timer.", "");
+    } else if(timerMode && relayStatus && (currentTime < startTimer) && (currentTime >= endTimer)) {
+      digitalWrite(relayPin, LOW); 
+      relayStatus = 0;
+      bot.sendMessage(CHAT_ID, "Light has now been turned OFF by timer.", "");
+    }
+
+    bot_lasttime = millis();
+  }
 }
